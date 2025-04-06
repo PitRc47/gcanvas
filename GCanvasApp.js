@@ -131,7 +131,6 @@ const styles = StyleSheet.create({
     // 或者使用百分比，但确保父容器有确定的大小
     // width: '90%',
     // height: '70%', 
-    backgroundColor: '#E0E0E0', // 设置背景色方便看到画布区域
     marginBottom: 20, // 留出底部空间
   },
   welcome: {
