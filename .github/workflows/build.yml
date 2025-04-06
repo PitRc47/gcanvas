@@ -28,6 +28,8 @@ jobs:
 
       - run: chmod +x android/gradlew
 
+      - run: npm install
+
       - run: |
           cd android
           ./gradlew assembleDebug
