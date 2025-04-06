@@ -3,7 +3,6 @@
  */
 
 import {AppRegistry} from 'react-native';
-import App from './App';
-import {name as appName} from './app.json';
+import GCanvasApp from './GCanvasApp';
 
-AppRegistry.registerComponent(appName, () => App);
+AppRegistry.registerComponent('gcanvas', () => GCanvasApp); 
