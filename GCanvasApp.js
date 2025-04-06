@@ -83,7 +83,7 @@ export default class SimpleGCanvasApp extends Component {
       const circleX = width * 0.6;
       const circleY = height * 0.4;
       const radius = width * 0.15;
-      ctx.arc(circleX, circleY, radius, 0, Math.PI * 2); // 画圆
+      ctx.arc(0, circleY, radius, 0, Math.PI * 2); // 画圆
       ctx.stroke(); // 描边
       console.log(`Drew blue circle at (${circleX}, ${circleY}) with radius ${radius}`);
 
