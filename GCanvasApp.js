@@ -120,7 +120,6 @@ const styles = StyleSheet.create({
     flex: 1,
     // justifyContent: 'center', // 居中可能会影响布局，暂时注释掉
     alignItems: 'center',
-    backgroundColor: '#F5FCFF',
     paddingTop: 50, // 留出顶部空间
   },
   gcanvas: {
