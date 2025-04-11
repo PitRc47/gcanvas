@@ -1,11 +1,11 @@
 import React, { Component } from 'react';
 import {
-  AppRegistry, // 确保 AppRegistry 在 index.js 中使用
+  AppRegistry,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  PixelRatio, // 用于获取设备像素密度
+  PixelRatio,
 } from 'react-native';
 // 只导入 GCanvasView
 import { GCanvasView } from '@flyskywhy/react-native-gcanvas';
