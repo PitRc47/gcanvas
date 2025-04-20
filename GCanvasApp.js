@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   View,
   PixelRatio,
+  StatusBar,
 } from 'react-native';
 import { GCanvasView } from '@flyskywhy/react-native-gcanvas';
 
@@ -173,16 +174,13 @@ export default class FullScreenGCanvasApp extends Component {
   render() {
     console.log("Rendering FullScreenGCanvasApp...");
     return (
-      // 1. 根 View 使用 flex: 1 占据屏幕
       <View style={styles.container}>
-        {/* 2. GCanvasView 使用 flex: 1 填充父容器 */}
-        {/* 同时绑定 onCanvasCreate 和 onLayout */}
+        <StatusBar hidden={true} />
         <GCanvasView
           style={styles.gcanvas}
           onCanvasCreate={this.initCanvas}
-          onLayout={this.handleLayout} // 关键：添加 onLayout 处理器
+          onLayout={this.handleLayout}
         />
-        {/* 3. 将按钮绝对定位，浮动在 Canvas 上方 */}
         <TouchableOpacity onPress={this.drawSimpleShapes} style={styles.drawButton}>
           <Text style={styles.buttonText}>点我绘制</Text>
         </TouchableOpacity>
