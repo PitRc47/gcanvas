@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@flyskywhy/react-native-browser-polyfill": "^2.0.2",
     "@flyskywhy/react-native-gcanvas": "^6.0.20",
     "react": "19.0.0",
     "react-native": "0.78.2"
