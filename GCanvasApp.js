@@ -1,329 +1,186 @@
 import React, { Component } from 'react';
 import {
+  AppRegistry,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   PixelRatio,
   StatusBar,
-  ScrollView,
-  Button,
-  TextInput, // 确保 TextInput 已导入
-  Platform,
-  Alert, // 用于显示错误提示
 } from 'react-native';
 import { GCanvasView } from '@flyskywhy/react-native-gcanvas';
 
-// --- 默认的 WebSocket 服务器地址 (可用作输入框的初始值) ---
-const DEFAULT_WEBSOCKET_URL = 'ws://10.0.2.2:8080'; // 示例: Android 模拟器本地地址
-
+// 将类名更改为更具描述性的名称
 export default class FullScreenGCanvasApp extends Component {
   constructor(props) {
     super(props);
     this.canvas = null;
     this.ctx = null;
-    this.ws = null; // WebSocket 实例
-    this.scrollViewRef = React.createRef(); // 用于滚动消息列表
-
+    // 使用 state 来存储布局尺寸和 Canvas 准备状态
     this.state = {
-      // GCanvas State
-      canvasLogicalWidth: 0,
-      canvasLogicalHeight: 0,
-      isCanvasReady: false,
-
-      // WebSocket State
-      wsUrlInput: DEFAULT_WEBSOCKET_URL, // 输入框中的 URL，给个默认值
-      activeWsUrl: null, // 当前连接的 URL
-      isConnected: false,
-      isConnecting: false, // 是否正在尝试连接
-      messageToSend: '',
-      receivedMessages: [],
+      canvasLogicalWidth: 0,  // 存储逻辑宽度 (来自 onLayout)
+      canvasLogicalHeight: 0, // 存储逻辑高度 (来自 onLayout)
+      isCanvasReady: false,   // 标记 canvas 对象是否已创建
     };
+    console.log("FullScreenGCanvasApp constructor called");
   }
 
-  // --- React Lifecycle Methods ---
-
-  // componentDidMount 不再自动连接
-
-  componentWillUnmount() {
-    console.log('ComponentWillUnmount: Closing WebSocket connection.');
-    this.closeWebSocket();
-  }
-
-  // --- WebSocket Methods ---
-
-  setupWebSocket = (urlToConnect) => {
-    // 防止重复连接或在连接时再次连接
-    if (this.state.isConnecting || this.state.isConnected) {
-        // 可以选择先断开旧连接
-        console.log('Already connecting or connected. Disconnecting previous connection first.');
-        this.closeWebSocket(); // 先尝试关闭
-        // 稍作延迟再尝试连接新的，确保旧的关闭完成
-        setTimeout(() => this.attemptConnection(urlToConnect), 500);
-        return;
-    }
-    this.attemptConnection(urlToConnect);
-  };
-
-  attemptConnection = (urlToConnect) => {
-    // 基础的 URL 验证
-    if (!urlToConnect || (!urlToConnect.startsWith('ws://') && !urlToConnect.startsWith('wss://'))) {
-        Alert.alert('无效的 URL', '请输入以 ws:// 或 wss:// 开头的有效 WebSocket 地址');
-        this.setState({ isConnecting: false }); // 确保重置连接中状态
-        return;
-    }
-
-    console.log(`Attempting to connect to WebSocket: ${urlToConnect}`);
-    this.setState({ isConnecting: true, isConnected: false, activeWsUrl: urlToConnect, receivedMessages: [] }); // 重置消息
-
-    try {
-      this.ws = new WebSocket(urlToConnect);
-    } catch (error) {
-       console.error('WebSocket creation failed:', error);
-       Alert.alert('连接错误', `创建 WebSocket 连接失败: ${error.message}`);
-       this.setState({ isConnecting: false, activeWsUrl: null });
-       return;
-    }
-
-
-    this.ws.onopen = () => {
-      console.log('WebSocket connection opened to:', urlToConnect);
-      this.setState({ isConnected: true, isConnecting: false });
-    };
-
-    this.ws.onclose = (e) => {
-      console.log('WebSocket connection closed', e.code, e.reason);
-      // 只有当关闭的 URL 是当前 activeWsUrl 时才更新状态，防止旧连接的 onclose 干扰新连接
-      if (this.ws && this.ws.url === this.state.activeWsUrl) {
-          this.setState({ isConnected: false, isConnecting: false, activeWsUrl: null }); // 连接关闭后清空 active url
-          this.ws = null; // 清理实例引用
-      } else {
-           console.log('Received close event for an old or irrelevant WebSocket instance.');
-      }
-      // 可选：添加自动重连逻辑（如果需要，但手动连接模式下可能不需要）
-    };
-
-    this.ws.onerror = (e) => {
-      console.error('WebSocket error:', e.message);
-      // 只有当出错的 URL 是当前 activeWsUrl 时才提示和更新状态
-      if (this.ws && this.ws.url === this.state.activeWsUrl) {
-          Alert.alert('连接错误', `WebSocket 连接出错: ${e.message || '未知错误'}`);
-          // onerror 之后通常会触发 onclose，状态会在 onclose 中处理
-          // 但为保险起见，也在此处设置状态
-          this.setState({ isConnecting: false, isConnected: false, activeWsUrl: null });
-           this.ws = null; // 清理实例引用
-      } else {
-          console.log('Received error event for an old or irrelevant WebSocket instance.');
-      }
-    };
-
-    this.ws.onmessage = (e) => {
-      // 检查消息是否来自当前活动的 WebSocket 连接
-      if (this.ws && this.ws.url === this.state.activeWsUrl) {
-          console.log('Received message:', e.data);
-          this.setState(prevState => ({
-            receivedMessages: [`Server: ${e.data}`, ...prevState.receivedMessages.slice(0, 49)],
-          }), () => {
-            // 滚动到底部
-            this.scrollViewRef.current?.scrollToEnd({ animated: true });
-          });
-      } else {
-          console.log('Received message from an old or inactive WebSocket connection. Ignoring.');
-      }
-    };
-  }
-
-  closeWebSocket = () => {
-    if (this.ws) {
-      console.log('Closing WebSocket explicitly.');
-      this.ws.close();
-      // onclose 事件处理器会处理状态更新
-      // 但为了立即反馈，可以先设置
-      this.setState({ isConnecting: false, isConnected: false });
-    }
-     // 无论 ws 实例是否存在，都清理 activeWsUrl
-    this.setState({ activeWsUrl: null });
-  };
-
-  sendMessage = () => {
-    const { isConnected, messageToSend } = this.state;
-    if (this.ws && isConnected && messageToSend) {
-      console.log('Sending message:', messageToSend);
-      this.ws.send(messageToSend);
-      this.setState(prevState => ({
-        receivedMessages: [`Me: ${messageToSend}`, ...prevState.receivedMessages.slice(0, 49)],
-        messageToSend: '',
-      }), () => {
-        this.scrollViewRef.current?.scrollToEnd({ animated: true });
-      });
-    } else if (!isConnected) {
-      Alert.alert('无法发送', 'WebSocket 未连接');
-    } else if (!messageToSend) {
-       console.warn('Cannot send empty message.');
-    }
-  };
-
-  // --- Input Handlers ---
-  handleUrlInputChange = (text) => {
-    this.setState({ wsUrlInput: text });
-  };
-
-  handleMessageInputChange = (text) => {
-    this.setState({ messageToSend: text });
-  };
-
-  // --- Button Handlers ---
-  handleConnectPress = () => {
-      const urlToConnect = this.state.wsUrlInput.trim(); // 去除首尾空格
-      this.setupWebSocket(urlToConnect);
-  };
-
-  handleDisconnectPress = () => {
-      this.closeWebSocket();
-  };
-
-
-  // --- GCanvas Methods (保持不变) ---
+  /**
+   * GCanvasView 创建时的回调函数
+   * @param {object} canvas - GCanvas 对象实例
+   */
   initCanvas = (canvas) => {
-    if (this.canvas) return;
+    if (this.canvas) {
+      console.log("Canvas instance already received via onCanvasCreate.");
+      return;
+    }
+    console.log("onCanvasCreate: Canvas instance received.");
     this.canvas = canvas;
     this.ctx = this.canvas.getContext('2d');
     this.setState({ isCanvasReady: true }, () => {
+      // 在 state 更新后检查：如果此时布局尺寸也已经有了，就设置 Canvas 尺寸
       if (this.state.canvasLogicalWidth > 0 && this.state.canvasLogicalHeight > 0) {
+        console.log("onCanvasCreate callback: Canvas ready and layout dimensions available. Setting canvas buffer size.");
         this.setCanvasSize(this.state.canvasLogicalWidth, this.state.canvasLogicalHeight);
+        // 可以在这里进行首次绘制，如果需要的话
+        // this.drawSimpleShapes();
+      } else {
+        console.log("onCanvasCreate callback: Canvas ready, waiting for onLayout to provide dimensions.");
       }
     });
   };
+
+  /**
+   * GCanvasView 布局变化时的回调函数
+   * @param {object} event - 布局事件对象
+   */
   handleLayout = (event) => {
     const { width, height } = event.nativeEvent.layout;
+    console.log(`onLayout: Detected layout dimensions (logical): ${width}x${height}`);
+
+    // 仅在尺寸有效且与当前 state 中的尺寸不同时进行更新
     if (width > 0 && height > 0 && (width !== this.state.canvasLogicalWidth || height !== this.state.canvasLogicalHeight)) {
+      console.log("onLayout: Layout dimensions changed or initialized. Updating state.");
+      // 更新 state 中的逻辑宽高
       this.setState({ canvasLogicalWidth: width, canvasLogicalHeight: height }, () => {
+        // 在 state 更新后检查：如果此时 Canvas 实例也已经准备好了，就设置 Canvas 尺寸
         if (this.canvas && this.state.isCanvasReady) {
+          console.log("onLayout callback: Layout updated and canvas ready. Setting canvas buffer size.");
           this.setCanvasSize(width, height);
+          // 可选：每次布局变化（如屏幕旋转）时自动重绘内容
+          // this.drawSimpleShapes();
+        } else {
+           console.log("onLayout callback: Layout updated, but canvas instance not yet ready. Size will be set once canvas is ready.");
         }
       });
+    } else if (width <= 0 || height <= 0) {
+        console.warn(`onLayout: Received invalid dimensions: ${width}x${height}. Ignoring.`);
+    } else {
+        console.log("onLayout: Dimensions are the same as current state. No update needed.");
     }
   };
+
+  /**
+   * 设置 Canvas 的物理绘图缓冲区尺寸
+   * @param {number} logicalWidth - 逻辑宽度 (来自 onLayout)
+   * @param {number} logicalHeight - 逻辑高度 (来自 onLayout)
+   */
   setCanvasSize = (logicalWidth, logicalHeight) => {
-      if (!this.canvas) return;
-      const scale = PixelRatio.get();
-      const physicalWidth = Math.round(logicalWidth * scale);
+      if (!this.canvas) {
+          console.error("setCanvasSize Error: Cannot set size because canvas instance is null.");
+          return;
+      }
+      const scale = PixelRatio.get(); // 获取当前设备的像素密度
+      const physicalWidth = Math.round(logicalWidth * scale); // 转换为物理像素，取整避免小数
       const physicalHeight = Math.round(logicalHeight * scale);
-      if (physicalWidth <= 0 || physicalHeight <= 0) return;
+
+      // 检查计算出的物理尺寸是否有效
+      if (physicalWidth <= 0 || physicalHeight <= 0) {
+          console.error(`setCanvasSize Error: Calculated invalid physical dimensions ${physicalWidth}x${physicalHeight} from logical ${logicalWidth}x${logicalHeight} and scale ${scale}. Aborting size set.`);
+          return;
+      }
+
+      // 只有当物理尺寸确实发生变化时才更新，避免不必要的重绘和性能损耗
       if (this.canvas.width !== physicalWidth || this.canvas.height !== physicalHeight) {
             this.canvas.width = physicalWidth;
             this.canvas.height = physicalHeight;
-            console.log(`Canvas buffer size set to physical: ${this.canvas.width}x${this.canvas.height}`);
+            console.log(`setCanvasSize: Canvas buffer size set to physical: ${this.canvas.width}x${this.canvas.height} (based on logical: ${logicalWidth}x${logicalHeight}, scale: ${scale})`);
+      } else {
+          console.log(`setCanvasSize: Canvas buffer size ${this.canvas.width}x${this.canvas.height} is already up-to-date.`);
       }
   }
+
+  /**
+   * 绘制简单图形的函数
+   * （注意：绘制坐标和尺寸现在基于 this.canvas.width/height，即物理像素）
+   */
   drawSimpleShapes = () => {
-    if (!this.ctx || !this.canvas || !(this.canvas.width > 0 && this.canvas.height > 0)) {
-        Alert.alert("错误", "Canvas 尚未准备好或尺寸无效。");
+    // 绘制前进行严格检查
+    if (!this.ctx) {
+        console.error("drawSimpleShapes Error: Canvas context (ctx) is not available.");
         return;
     }
-    const ctx = this.ctx; const width = this.canvas.width; const height = this.canvas.height; const scale = PixelRatio.get();
-    ctx.clearRect(0, 0, width, height); ctx.fillStyle = 'lightblue'; ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = 'red'; ctx.fillRect(width * 0.1, height * 0.1, width * 0.3, height * 0.2);
-    ctx.strokeStyle = 'blue'; ctx.lineWidth = 5 * scale; ctx.beginPath(); ctx.arc(width * 0.7, height * 0.6, width * 0.15, 0, Math.PI * 2); ctx.stroke();
+    if (!this.canvas) {
+        console.error("drawSimpleShapes Error: Canvas instance is not available.");
+        return;
+    }
+     // 确保 Canvas 的物理尺寸已经被设置并且是有效的
+    if (!(this.canvas.width > 0 && this.canvas.height > 0)) {
+        console.error(`drawSimpleShapes Error: Canvas physical dimensions (${this.canvas.width}x${this.canvas.height}) are invalid or not yet set. Cannot draw.`);
+        // 也许提示用户稍后再试，或者尝试强制获取布局？（通常不推荐）
+        alert("Canvas 尺寸尚未就绪，请稍后再试。");
+        return;
+    }
+
+    console.log(`Drawing simple shapes on canvas with physical size: ${this.canvas.width}x${this.canvas.height}`);
+    const ctx = this.ctx;
+    const width = this.canvas.width;   // 使用物理像素宽度
+    const height = this.canvas.height; // 使用物理像素高度
+    const scale = PixelRatio.get();    // 获取像素密度，用于调整线宽等
+
+    // 1. 清空整个画布
+    ctx.clearRect(0, 0, width, height);
+
+    // 2. 绘制一个覆盖全屏的浅蓝色背景（可选）
+    ctx.fillStyle = 'lightblue';
+    ctx.fillRect(0, 0, width, height);
+    console.log(`Drew lightblue background covering ${width}x${height}`);
+
+    // 3. 绘制一个红色填充矩形 (坐标和尺寸相对于物理像素)
+    ctx.fillStyle = 'red';
+    const rectX = width * 0.1;
+    const rectY = height * 0.1;
+    const rectWidth = width * 0.3;
+    const rectHeight = height * 0.2;
+    ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
+    console.log(`Drew red rect at (${rectX.toFixed(2)}, ${rectY.toFixed(2)}) size ${rectWidth.toFixed(2)}x${rectHeight.toFixed(2)}`);
+
+    // 4. 绘制一个蓝色描边圆形 (坐标和尺寸相对于物理像素)
+    ctx.strokeStyle = 'blue';
+    // 线宽最好也根据像素密度调整，使其在不同设备上看起来粗细一致
+    ctx.lineWidth = 5 * scale;
+    ctx.beginPath(); // 开始新路径，非常重要！
+    const circleX = width * 0.7; // 调整位置避免重叠
+    const circleY = height * 0.6; // 调整位置避免重叠
+    const radius = width * 0.15;
+    // arc(圆心x, 圆心y, 半径, 起始角, 结束角)
+    ctx.arc(circleX, circleY, radius, 0, Math.PI * 2);
+    ctx.stroke(); // 执行描边
+    console.log(`Drew blue circle at (${circleX.toFixed(2)}, ${circleY.toFixed(2)}) with radius ${radius.toFixed(2)}, lineWidth ${ctx.lineWidth}`);
+
     console.log("Drawing complete.");
   };
 
-  // --- Render Method (Updated) ---
-
   render() {
-    const {
-        isConnected,
-        isConnecting,
-        activeWsUrl,
-        wsUrlInput,
-        messageToSend,
-        receivedMessages
-    } = this.state;
-
-    let statusText = '未连接';
-    if (isConnecting) {
-        statusText = `正在连接到 ${activeWsUrl}...`;
-    } else if (isConnected && activeWsUrl) {
-        statusText = `已连接到 ${activeWsUrl}`;
-    }
-
+    console.log("Rendering FullScreenGCanvasApp...");
     return (
       <View style={styles.container}>
         <StatusBar hidden={true} />
-
-        {/* GCanvas View */}
         <GCanvasView
           style={styles.gcanvas}
           onCanvasCreate={this.initCanvas}
           onLayout={this.handleLayout}
         />
-
-        {/* WebSocket UI Section */}
-        <View style={styles.wsContainer}>
-           {/* URL Input and Connect/Disconnect Buttons */}
-          <View style={styles.connectionControlContainer}>
-             <TextInput
-              style={styles.urlInput}
-              value={wsUrlInput}
-              onChangeText={this.handleUrlInputChange}
-              placeholder="输入 WebSocket URL (ws:// or wss://)"
-              placeholderTextColor="#999"
-              keyboardType="url"
-              autoCapitalize="none"
-              autoCorrect={false}
-              // 当连接中或已连接时，输入框可以设为不可编辑，防止误操作
-              editable={!isConnecting && !isConnected}
-            />
-            <View style={styles.buttonRow}>
-                <Button
-                  title={isConnecting ? "连接中..." : "连接"}
-                  onPress={this.handleConnectPress}
-                  // 正在连接或已连接时禁用“连接”按钮
-                  disabled={isConnecting || isConnected}
-                />
-                <View style={{ width: 10 }} /> {/* 按钮间距 */}
-                <Button
-                  title="断开连接"
-                  onPress={this.handleDisconnectPress}
-                  // 只有在连接中或已连接时才启用“断开连接”按钮
-                  disabled={!isConnecting && !isConnected}
-                  color="#FF6347" // 使用不同颜色区分
-                />
-            </View>
-          </View>
-
-
-          <Text style={styles.statusText}>{statusText}</Text>
-
-          {/* Message Display Area */}
-          <ScrollView
-            style={styles.messagesContainer}
-            ref={this.scrollViewRef} // 绑定 ref
-            >
-            {receivedMessages.map((msg, index) => (
-              <Text key={index} style={styles.messageText}>{msg}</Text>
-            ))}
-          </ScrollView>
-
-          {/* Input and Send Area */}
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              value={messageToSend}
-              onChangeText={this.handleMessageInputChange}
-              placeholder="输入消息..."
-              placeholderTextColor="#999"
-              editable={isConnected} // 只有连接时才能输入消息
-            />
-            <Button
-              title="发送"
-              onPress={this.sendMessage}
-              disabled={!isConnected || !messageToSend} // 只有连接且有内容时才能发送
-            />
-          </View>
-        </View>
-
-        {/* Floating Draw Button - 可能需要调整位置 */}
         <TouchableOpacity onPress={this.drawSimpleShapes} style={styles.drawButton}>
           <Text style={styles.buttonText}>点我绘制</Text>
         </TouchableOpacity>
@@ -332,59 +189,43 @@ export default class FullScreenGCanvasApp extends Component {
   }
 }
 
-// --- Styles (Updated) ---
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#333' },
-  gcanvas: { flex: 1 },
-  wsContainer: {
-    // 保持在底部
-    padding: 10,
-    backgroundColor: 'rgba(50, 50, 50, 0.8)',
-    borderTopWidth: 1,
-    borderTopColor: '#444',
-    // 高度由内容决定，或者可以给一个 maxHeight
+  container: {
+    flex: 1, // 核心：让容器填满父视图（通常是整个屏幕）
+    backgroundColor: '#333', // 给容器加个深色背景，方便看到 Canvas 区域
+    // 移除 alignItems 和 paddingTop/paddingBottom 等可能影响全屏的样式
   },
-  // --- 新增样式 ---
-  connectionControlContainer: {
-      marginBottom: 10,
+  gcanvas: {
+    flex: 1, // 核心：让 GCanvasView 自动伸展以填充 container
+    // 不需要设置 width 或 height，flex: 1 会处理
+    // 可以加个临时背景色调试布局是否正确
+    // backgroundColor: 'rgba(255, 255, 0, 0.5)', // 半透明黄色背景
   },
-  urlInput: {
-    borderWidth: 1,
-    borderColor: '#555',
-    backgroundColor: '#fff',
-    color: '#000',
-    paddingHorizontal: 10,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-    borderRadius: 4,
-    marginBottom: 8,
-    fontSize: 14,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around', // 或 'center'
-  },
-  // --- /新增样式 ---
-  statusText: { color: 'white', textAlign: 'center', marginBottom: 5, fontWeight: 'bold' },
-  messagesContainer: {
-    height: 100, // 可调整
-    backgroundColor: '#222', borderRadius: 4, padding: 8, marginBottom: 10,
-  },
-  messageText: { color: '#eee', fontSize: 12, marginBottom: 4 },
-  inputContainer: { flexDirection: 'row', alignItems: 'center' },
-  input: {
-    flex: 1, borderWidth: 1, borderColor: '#555', backgroundColor: '#fff', color: '#000',
-    paddingHorizontal: 10, paddingVertical: Platform.OS === 'ios' ? 10 : 5,
-    borderRadius: 4, marginRight: 10, height: 40,
-  },
+  // 将按钮样式改为浮动按钮，避免占用布局空间
   drawButton: {
-    position: 'absolute',
-    // ！！！可能需要根据 wsContainer 的实际高度调整 bottom 值 ！！！
-    // 估算：URL输入+按钮+状态+消息框+消息输入 = 大约 60 + 30 + 20 + 100 + 40 + paddings = ~260+
-    bottom: 280, // 尝试增加这个值
-    left: '50%', width: 180, marginLeft: -90, paddingVertical: 12, paddingHorizontal: 20,
-    backgroundColor: 'rgba(0, 122, 255, 0.9)', borderRadius: 25, elevation: 5,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3,
-    alignItems: 'center',
+    position: 'absolute', // 使用绝对定位
+    bottom: 40,          // 距离屏幕底部 40 像素
+    // 水平居中技巧：left 50% 然后用 marginLeft 负的宽度一半
+    left: '50%',
+    width: 180,          // 按钮宽度
+    marginLeft: -90,     // 宽度的一半
+    paddingVertical: 12, // 上下内边距
+    paddingHorizontal: 20, // 左右内边距
+    backgroundColor: 'rgba(0, 122, 255, 0.9)', // 带透明度的蓝色背景
+    borderRadius: 25,     // 圆角效果
+    elevation: 5,         // Android 阴影
+    shadowColor: '#000',  // iOS 阴影
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    alignItems: 'center', // 按钮内文字居中
   },
-  buttonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+  buttonText: {
+    color: 'white',       // 文字颜色
+    fontSize: 16,         // 文字大小
+    fontWeight: 'bold',   // 文字加粗
+  },
 });
+
+// 确保你的应用入口文件 (如 index.js 或 App.js) 注册的是这个组件：
+// AppRegistry.registerComponent('YourProjectName', () => FullScreenGCanvasApp);
